@@ -1,8 +1,24 @@
 name: Test Reusable
 on:
   workflow_call:
+    inputs:
+      stack:
+        required: false
+        type: string
+        default: "unknown"
+      test_command:
+        required: false
+        type: string
+        default: "echo ok"
+    secrets:
+      TAILSCALE_AUTHKEY:
+        required: true
+      LITELLM_URL:
+        required: true
+      LITELLM_MASTER_KEY:
+        required: true
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: echo hello from reusable
+      - run: echo stack is ${{ inputs.stack }}
