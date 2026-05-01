@@ -26,16 +26,8 @@ on:
       LITELLM_MASTER_KEY:
         required: true
 
-  # Also allow direct trigger on the sdlc repo itself for testing
-  issues:
-    types: [labeled]
-
 jobs:
   ai-task:
-    # When called directly (not via workflow_call), filter on label
-    if: |
-      github.event_name == 'workflow_call' ||
-      (github.event_name == 'issues' && github.event.label.name == 'ai-task')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -65,8 +57,7 @@ jobs:
           python-version: ${{ inputs.python_version || '3.11' }}
 
       - name: Install agent dependencies
-        run: |
-          pip install openai PyGithub requests
+        run: pip install openai PyGithub requests
 
       - name: Checkout agent scripts
         uses: actions/checkout@v4
