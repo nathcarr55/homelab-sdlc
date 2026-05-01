@@ -22,3 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo stack is ${{ inputs.stack }}
+
+      - name: Run tests
+        run: ${{ inputs.test_command || 'echo ok' }}
