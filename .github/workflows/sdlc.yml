@@ -4,13 +4,20 @@ on:
   workflow_call:
     inputs:
       stack:
+        description: "Tech stack hint for the agents (e.g. vue+fastapi+postgres)"
         required: false
         type: string
         default: "unknown"
       test_command:
+        description: "Command to run tests (e.g. npm test, pytest)"
         required: false
         type: string
-        default: "echo no tests"
+        default: "echo no tests configured"
+      python_version:
+        description: "Python version for agent scripts"
+        required: false
+        type: string
+        default: "3.11.0"
     secrets:
       TAILSCALE_AUTHKEY:
         required: true
@@ -22,5 +29,93 @@ on:
 jobs:
   ai-task:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
     steps:
-      - run: echo stack is ${{ inputs.stack }}
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          tags: tag:ci
+
+      - name: Verify LiteLLM reachable
+        run: |
+          echo "Pinging LiteLLM at ${{ secrets.LITELLM_URL }}..."
+          curl -sf ${{ secrets.LITELLM_URL }}/health || (echo "LiteLLM unreachable - check Tailscale connection" && exit 1)
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version || '3.11.0' }}
+
+      - name: Install agent dependencies
+        run: pip install openai PyGithub requests
+
+      - name: Checkout agent scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/homelab-sdlc
+          path: .sdlc
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run planning agent
+        id: plan
+        env:
+          LITELLM_URL: ${{ secrets.LITELLM_URL }}
+          LITELLM_MASTER_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          STACK: ${{ inputs.stack || 'unknown' }}
+        run: python .sdlc/agents/plan.py
+
+      - name: Run coding agent
+        id: code
+        env:
+          LITELLM_URL: ${{ secrets.LITELLM_URL }}
+          LITELLM_MASTER_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          STACK: ${{ inputs.stack || 'unknown' }}
+          TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
+        run: python .sdlc/agents/code.py
+
+      - name: Run tests
+        id: test
+        continue-on-error: true
+        run: ${{ inputs.test_command || 'echo no tests configured' }}
+
+      - name: Retry coding agent on test failure
+        if: steps.test.outcome == 'failure'
+        env:
+          LITELLM_URL: ${{ secrets.LITELLM_URL }}
+          LITELLM_MASTER_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          STACK: ${{ inputs.stack || 'unknown' }}
+          TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
+          TEST_FAILURE: "true"
+        run: python .sdlc/agents/code.py
+
+      - name: Open pull request
+        env:
+          LITELLM_URL: ${{ secrets.LITELLM_URL }}
+          LITELLM_MASTER_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
+          TESTS_PASSED: ${{ steps.test.outcome == 'success' }}
+        run: python .sdlc/agents/pr.py
