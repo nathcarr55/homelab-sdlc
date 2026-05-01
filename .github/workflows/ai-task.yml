@@ -7,7 +7,7 @@ on:
 jobs:
   ai-sdlc:
     if: github.event.label.name == 'ai-task'
-    uses: nathcarr55/homelab-sdlc/.github/workflows/sdlc.yml@main
+    uses: nathcarr55/homelab-sdlc/.github/workflows/sdlc.yml@master
     with:
       stack: "vue+fastapi+postgres"
       test_command: "echo 'configure your test command here'"
