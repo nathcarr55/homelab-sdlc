@@ -49,7 +49,7 @@ jobs:
       - name: Verify LiteLLM reachable
         run: |
           echo "Pinging LiteLLM at ${{ secrets.LITELLM_URL }}..."
-          curl -sf ${{ secrets.LITELLM_URL }}/health || (echo "LiteLLM unreachable — check Tailscale connection" && exit 1)
+          curl -sf ${{ secrets.LITELLM_URL }}/health || (echo "LiteLLM unreachable - check Tailscale connection" && exit 1)
 
       - name: Set up Python
         uses: actions/setup-python@v5
