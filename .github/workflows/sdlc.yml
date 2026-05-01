@@ -6,15 +6,11 @@ on:
       stack:
         required: false
         type: string
-        default: unknown
+        default: "unknown"
       test_command:
         required: false
         type: string
-        default: echo no tests
-      python_version:
-        required: false
-        type: string
-        default: 3.11
+        default: "echo no tests"
     secrets:
       TAILSCALE_AUTHKEY:
         required: true
@@ -26,13 +22,5 @@ on:
 jobs:
   ai-task:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - run: echo stack is ${{ inputs.stack }}
