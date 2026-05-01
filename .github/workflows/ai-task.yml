@@ -1,0 +1,17 @@
+name: AI Task
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  ai-sdlc:
+    if: github.event.label.name == 'ai-task'
+    uses: nathcarr55/homelab-sdlc/.github/workflows/sdlc.yml@main
+    with:
+      stack: "vue+fastapi+postgres"
+      test_command: "echo 'configure your test command here'"
+    secrets:
+      TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+      LITELLM_URL: ${{ secrets.LITELLM_URL }}
+      LITELLM_MASTER_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
