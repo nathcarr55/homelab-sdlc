@@ -41,16 +41,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v3
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-
-      - name: Verify LiteLLM reachable
-        run: |
-          echo "Pinging LiteLLM at ${{ secrets.LITELLM_URL }}..."
-          curl -sf ${{ secrets.LITELLM_URL }}/health -H "Authorization: Bearer ${{ secrets.LITELLM_MASTER_KEY }}" || (echo "LiteLLM unreachable - check Tailscale connection" && exit 1)
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -65,6 +55,16 @@ jobs:
           repository: ${{ github.repository_owner }}/homelab-sdlc
           path: .sdlc
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Verify LiteLLM reachable
+        run: |
+          echo "Pinging LiteLLM at ${{ secrets.LITELLM_URL }}..."
+          curl -sf ${{ secrets.LITELLM_URL }}/health -H "Authorization: Bearer ${{ secrets.LITELLM_MASTER_KEY }}" || (echo "LiteLLM unreachable - check Tailscale connection" && exit 1)
 
       - name: Run planning agent
         id: plan
