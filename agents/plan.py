@@ -57,6 +57,7 @@ Respond ONLY with a JSON object — no preamble, no markdown fences. Schema:
 }}
 
 Keep tasks small and discrete. Max 5 tasks. files_to_change should be real paths from the file tree.
+Make sure you are incorporating both frontend changes that need to be made and backend changes in your tasks that are being created.
 """
 
 user_prompt = f"""Issue #{ISSUE_NUMBER}: {ISSUE_TITLE}
