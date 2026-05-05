@@ -35,6 +35,21 @@ jobs:
   ai-task:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -95,6 +110,15 @@ jobs:
       - name: Run tests
         id: test
         continue-on-error: true
+        env:
+          POSTGRES_SERVER: localhost
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: testdb
+          POSTGRES_PORT: "5432"
+          FIRST_SUPERUSER: admin@example.com
+          FIRST_SUPERUSER_PASSWORD: testpassword123
+          SECRET_KEY: testsecretkey
         run: ${{ inputs.test_command || 'echo no tests configured' }}
 
       - name: Retry coding agent on test failure
@@ -120,3 +144,4 @@ jobs:
           TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
           TESTS_PASSED: ${{ steps.test.outcome == 'success' }}
         run: python .sdlc/agents/pr.py
+
