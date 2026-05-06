@@ -36,7 +36,7 @@ default_branch = repo.default_branch
 # Run tests to get current failure output
 print("Running tests to capture fresh failure output...")
 proc = subprocess.run(
-    TEST_COMMAND, shell=True, capture_output=True, text=True, timeout=600
+    TEST_COMMAND, shell=True, executable="/bin/bash", capture_output=True, text=True, timeout=600
 )
 test_output = (proc.stdout + proc.stderr).strip()
 
