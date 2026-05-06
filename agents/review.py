@@ -121,7 +121,7 @@ result = {"approved": True, "summary": "Review defaulted to approved.", "issues"
 try:
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1024,
+        max_tokens=4096,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = response.content[0].text.strip()
