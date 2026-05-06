@@ -95,6 +95,7 @@ jobs:
           ISSUE_BODY: ${{ github.event.issue.body }}
           REPO_FULL_NAME: ${{ github.repository }}
           STACK: ${{ inputs.stack || 'unknown' }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python .sdlc/agents/plan.py
 
       - name: Run coding agent
