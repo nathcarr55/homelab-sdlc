@@ -60,6 +60,7 @@ Respond ONLY with a JSON object — no preamble, no markdown fences. Schema:
 
 Keep tasks small and discrete. Max 10 tasks. files_to_change should be real paths from the file tree.
 Make sure you are incorporating both frontend changes that need to be made and backend changes in your tasks.
+For every feature or bugfix task that adds or modifies a function, endpoint, or component, include the corresponding test file in files_to_change (e.g. backend/tests/test_orders.py or frontend/src/stores/__tests__/cart.test.ts). Tests are first-class — always include them alongside the implementation file.
 """
 
 user_prompt = f"""Issue #{ISSUE_NUMBER}: {ISSUE_TITLE}
