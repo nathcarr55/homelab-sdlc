@@ -25,6 +25,8 @@ on:
         required: true
       LITELLM_MASTER_KEY:
         required: true
+      ANTHROPIC_API_KEY:
+        required: false
 
 permissions:
   contents: write
@@ -62,7 +64,7 @@ jobs:
           python-version: ${{ inputs.python_version || '3.12' }}
 
       - name: Install agent dependencies
-        run: pip install openai PyGithub requests
+        run: pip install openai PyGithub requests anthropic
 
       - name: Checkout agent scripts
         uses: actions/checkout@v4
@@ -134,6 +136,44 @@ jobs:
           TEST_FAILURE: "true"
         run: python .sdlc/agents/code.py
 
+      - name: Run review agent
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
+          STACK: ${{ inputs.stack || 'unknown' }}
+          REVIEW_ATTEMPT: "1"
+        run: python .sdlc/agents/review.py
+
+      - name: Retry coding agent on review rejection
+        if: steps.review.outputs.approved == 'false'
+        env:
+          LITELLM_URL: ${{ secrets.LITELLM_URL }}
+          LITELLM_MASTER_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          STACK: ${{ inputs.stack || 'unknown' }}
+          TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
+          REVIEW_FEEDBACK: ${{ steps.review.outputs.feedback }}
+        run: python .sdlc/agents/code.py
+
+      - name: Re-run review agent after rejection retry
+        id: review2
+        if: steps.review.outputs.approved == 'false'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
+          STACK: ${{ inputs.stack || 'unknown' }}
+          REVIEW_ATTEMPT: "2"
+        run: python .sdlc/agents/review.py
+
       - name: Open pull request
         env:
           LITELLM_URL: ${{ secrets.LITELLM_URL }}
@@ -143,5 +183,5 @@ jobs:
           REPO_FULL_NAME: ${{ github.repository }}
           TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
           TESTS_PASSED: ${{ steps.test.outcome == 'success' }}
+          REVIEW_APPROVED: ${{ steps.review2.outputs.approved || steps.review.outputs.approved }}
         run: python .sdlc/agents/pr.py
-
