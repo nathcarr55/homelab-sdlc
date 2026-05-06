@@ -27,6 +27,7 @@ def run_tests() -> tuple[bool, str]:
     result = subprocess.run(
         TEST_COMMAND,
         shell=True,
+        executable="/bin/bash",
         capture_output=True,
         text=True,
         timeout=600,
