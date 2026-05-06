@@ -58,7 +58,7 @@ Respond ONLY with a JSON object — no preamble, no markdown fences. Schema:
   "notes": "any caveats or things the coding agent should watch out for"
 }}
 
-Keep tasks small and discrete. Max 5 tasks. files_to_change should be real paths from the file tree.
+Keep tasks small and discrete. Max 10 tasks. files_to_change should be real paths from the file tree.
 Make sure you are incorporating both frontend changes that need to be made and backend changes in your tasks.
 """
 
