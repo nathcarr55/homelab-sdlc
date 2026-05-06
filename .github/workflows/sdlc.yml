@@ -163,6 +163,35 @@ jobs:
           REVIEW_FEEDBACK: ${{ steps.review.outputs.feedback }}
         run: python .sdlc/agents/code.py
 
+      - name: Re-run tests after review rejection retry
+        id: test2
+        if: steps.review.outputs.approved == 'false'
+        continue-on-error: true
+        env:
+          POSTGRES_SERVER: localhost
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: testdb
+          POSTGRES_PORT: "5432"
+          FIRST_SUPERUSER: admin@example.com
+          FIRST_SUPERUSER_PASSWORD: testpassword123
+          SECRET_KEY: testsecretkey
+          PROJECT_NAME: "Sweetheart City Roastery"
+        run: ${{ inputs.test_command || 'echo no tests configured' }}
+
+      - name: Retry coding agent on post-review test failure
+        if: steps.test2.outcome == 'failure'
+        env:
+          LITELLM_URL: ${{ secrets.LITELLM_URL }}
+          LITELLM_MASTER_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          STACK: ${{ inputs.stack || 'unknown' }}
+          TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
+          TEST_FAILURE: "true"
+        run: python .sdlc/agents/code.py
+
       - name: Re-run review agent after rejection retry
         id: review2
         if: steps.review.outputs.approved == 'false'
@@ -184,6 +213,6 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           REPO_FULL_NAME: ${{ github.repository }}
           TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
-          TESTS_PASSED: ${{ steps.test.outcome == 'success' }}
+          TESTS_PASSED: ${{ steps.test2.outcome == 'success' || (steps.test2.outcome == '' && steps.test.outcome == 'success') }}
           REVIEW_APPROVED: ${{ steps.review2.outputs.approved || steps.review.outputs.approved }}
         run: python .sdlc/agents/pr.py
