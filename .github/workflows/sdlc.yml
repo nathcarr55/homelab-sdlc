@@ -122,6 +122,7 @@ jobs:
           FIRST_SUPERUSER: admin@example.com
           FIRST_SUPERUSER_PASSWORD: testpassword123
           SECRET_KEY: testsecretkey
+          PROJECT_NAME: "Sweetheart City Roastery"
         run: ${{ inputs.test_command || 'echo no tests configured' }}
 
       - name: Retry coding agent on test failure
