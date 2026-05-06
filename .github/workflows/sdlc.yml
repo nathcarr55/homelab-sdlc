@@ -115,7 +115,7 @@ jobs:
         continue-on-error: true
         env:
           TEST_COMMAND: ${{ inputs.test_command || 'echo no tests configured' }}
-          MAX_ATTEMPTS: "4"
+          MAX_ATTEMPTS: "6"
           LITELLM_URL: ${{ secrets.LITELLM_URL }}
           LITELLM_MASTER_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
