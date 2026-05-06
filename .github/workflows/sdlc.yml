@@ -110,12 +110,13 @@ jobs:
           TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
         run: python .sdlc/agents/code.py
 
+      # ── Test loop: run tests, fix with coding agent, repeat until green ──────
       - name: Test and fix loop
         id: test_loop
         continue-on-error: true
         env:
           TEST_COMMAND: ${{ inputs.test_command || 'echo no tests configured' }}
-          MAX_ATTEMPTS: "6"
+          MAX_ATTEMPTS: "4"
           LITELLM_URL: ${{ secrets.LITELLM_URL }}
           LITELLM_MASTER_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -134,8 +135,59 @@ jobs:
           PROJECT_NAME: "Sweetheart City Roastery"
         run: python .sdlc/agents/test_loop.py
 
+      # ── Lifeline: if test loop exhausted, escalate to Claude for diagnosis ───
+      - name: Claude lifeline — diagnose and fix persistent failures
+        id: lifeline
+        if: steps.test_loop.outputs.tests_passed == 'false'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
+          STACK: ${{ inputs.stack || 'unknown' }}
+          TEST_COMMAND: ${{ inputs.test_command || 'echo no tests configured' }}
+          POSTGRES_SERVER: localhost
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: testdb
+          POSTGRES_PORT: "5432"
+          FIRST_SUPERUSER: admin@example.com
+          FIRST_SUPERUSER_PASSWORD: testpassword123
+          SECRET_KEY: testsecretkey
+          PROJECT_NAME: "Sweetheart City Roastery"
+        run: python .sdlc/agents/lifeline.py
+
+      - name: Test and fix loop (post-lifeline)
+        id: test_loop_lifeline
+        if: steps.test_loop.outputs.tests_passed == 'false'
+        continue-on-error: true
+        env:
+          TEST_COMMAND: ${{ inputs.test_command || 'echo no tests configured' }}
+          MAX_ATTEMPTS: "3"
+          LOOP_LABEL: "post-lifeline"
+          LITELLM_URL: ${{ secrets.LITELLM_URL }}
+          LITELLM_MASTER_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          STACK: ${{ inputs.stack || 'unknown' }}
+          TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
+          POSTGRES_SERVER: localhost
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: testdb
+          POSTGRES_PORT: "5432"
+          FIRST_SUPERUSER: admin@example.com
+          FIRST_SUPERUSER_PASSWORD: testpassword123
+          SECRET_KEY: testsecretkey
+          PROJECT_NAME: "Sweetheart City Roastery"
+        run: python .sdlc/agents/test_loop.py
+
+      # ── Review: only runs if tests are passing ────────────────────────────────
       - name: Run review agent
         id: review
+        if: steps.test_loop.outputs.tests_passed == 'true' || steps.test_loop_lifeline.outputs.tests_passed == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -160,12 +212,12 @@ jobs:
         run: python .sdlc/agents/code.py
 
       - name: Test and fix loop (post-review)
-        id: test_loop2
+        id: test_loop_review
         if: steps.review.outputs.approved == 'false'
         continue-on-error: true
         env:
           TEST_COMMAND: ${{ inputs.test_command || 'echo no tests configured' }}
-          MAX_ATTEMPTS: "4"
+          MAX_ATTEMPTS: "3"
           LOOP_LABEL: "post-review"
           REVIEW_FEEDBACK: ${{ steps.review.outputs.feedback }}
           LITELLM_URL: ${{ secrets.LITELLM_URL }}
@@ -207,6 +259,6 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           REPO_FULL_NAME: ${{ github.repository }}
           TASK_PLAN: ${{ steps.plan.outputs.task_plan }}
-          TESTS_PASSED: ${{ steps.test_loop2.outputs.tests_passed || steps.test_loop.outputs.tests_passed }}
-          REVIEW_APPROVED: ${{ steps.review2.outputs.approved || steps.review.outputs.approved }}
+          TESTS_PASSED: ${{ steps.test_loop_review.outputs.tests_passed || steps.test_loop_lifeline.outputs.tests_passed || steps.test_loop.outputs.tests_passed }}
+          REVIEW_APPROVED: ${{ steps.review2.outputs.approved || steps.review.outputs.approved || 'true' }}
         run: python .sdlc/agents/pr.py
