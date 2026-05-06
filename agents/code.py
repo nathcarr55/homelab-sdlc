@@ -12,14 +12,15 @@ from openai import OpenAI
 from github import Github, GithubException
 
 # ── Config from environment ──────────────────────────────────────────────────
-LITELLM_URL    = os.environ["LITELLM_URL"]
-LITELLM_KEY    = os.environ["LITELLM_MASTER_KEY"]
-GITHUB_TOKEN   = os.environ["GITHUB_TOKEN"]
-REPO_FULL_NAME = os.environ["REPO_FULL_NAME"]
-ISSUE_NUMBER   = int(os.environ["ISSUE_NUMBER"])
-STACK          = os.environ.get("STACK", "unknown")
-TASK_PLAN_RAW  = os.environ.get("TASK_PLAN", "")
-TEST_FAILURE   = os.environ.get("TEST_FAILURE", "false").lower() == "true"
+LITELLM_URL     = os.environ["LITELLM_URL"]
+LITELLM_KEY     = os.environ["LITELLM_MASTER_KEY"]
+GITHUB_TOKEN    = os.environ["GITHUB_TOKEN"]
+REPO_FULL_NAME  = os.environ["REPO_FULL_NAME"]
+ISSUE_NUMBER    = int(os.environ["ISSUE_NUMBER"])
+STACK           = os.environ.get("STACK", "unknown")
+TASK_PLAN_RAW   = os.environ.get("TASK_PLAN", "")
+TEST_FAILURE    = os.environ.get("TEST_FAILURE", "false").lower() == "true"
+REVIEW_FEEDBACK = os.environ.get("REVIEW_FEEDBACK", "")
 
 # ── Clients ───────────────────────────────────────────────────────────────────
 llm  = OpenAI(base_url=f"{LITELLM_URL}/v1", api_key=LITELLM_KEY)
@@ -65,6 +66,13 @@ def commit_file(path: str, content: str, sha: str, message: str):
     else:
         repo.create_file(path, message, content, branch=branch_name)
 
+# ── Build context note for the LLM ───────────────────────────────────────────
+retry_context = ""
+if REVIEW_FEEDBACK:
+    retry_context = f"- IMPORTANT: A code review rejected the previous attempt. Fix these specific issues:\n  {REVIEW_FEEDBACK}"
+elif TEST_FAILURE:
+    retry_context = "- IMPORTANT: Tests just failed. Fix the issue carefully."
+
 # ── System prompt for coding ─────────────────────────────────────────────────
 SYSTEM = f"""You are an expert {STACK} developer making precise, minimal code changes.
 
@@ -74,7 +82,8 @@ Rules:
 - Follow the existing code style exactly.
 - If creating a new file, write clean, idiomatic code for the stack.
 - Do not add unnecessary comments.
-{"- IMPORTANT: Tests just failed. Fix the issue carefully." if TEST_FAILURE else ""}
+- Do not import modules, models, or functions that do not exist in the codebase.
+{retry_context}
 """
 
 # ── Process each task ─────────────────────────────────────────────────────────
@@ -99,6 +108,7 @@ File: {file_path}
 
 Issue context: {plan.get('summary', '')}
 Notes: {plan.get('notes', '')}
+{f"Review feedback to address: {REVIEW_FEEDBACK}" if REVIEW_FEEDBACK else ""}
 
 Return the complete new file content:"""
 
@@ -139,9 +149,14 @@ Return the complete new file content:"""
 # ── Summary comment on issue ──────────────────────────────────────────────────
 if committed_files:
     files_list = "\n".join(f"- `{f}`" for f in committed_files)
+    retry_note = ""
+    if REVIEW_FEEDBACK:
+        retry_note = "🔄 Retrying after review rejection.\n\n"
+    elif TEST_FAILURE:
+        retry_note = "⚠️ Retrying after test failure.\n\n"
     issue.create_comment(
         f"🤖 **AI Agent — Code Changes**\n\n"
-        f"{'⚠️ Retrying after test failure.' if TEST_FAILURE else ''}\n\n"
+        f"{retry_note}"
         f"Committed changes to `{branch_name}`:\n{files_list}"
     )
     print(f"\nCoding complete. {len(committed_files)} file(s) committed to {branch_name}.")
