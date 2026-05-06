@@ -20,6 +20,7 @@ ISSUE_NUMBER    = int(os.environ["ISSUE_NUMBER"])
 STACK           = os.environ.get("STACK", "unknown")
 TASK_PLAN_RAW   = os.environ.get("TASK_PLAN", "")
 TEST_FAILURE    = os.environ.get("TEST_FAILURE", "false").lower() == "true"
+TEST_OUTPUT     = os.environ.get("TEST_OUTPUT", "")
 REVIEW_FEEDBACK = os.environ.get("REVIEW_FEEDBACK", "")
 
 # ── Clients ───────────────────────────────────────────────────────────────────
@@ -51,13 +52,12 @@ except GithubException:
 
 # ── Helper: fetch file content from repo ─────────────────────────────────────
 def fetch_file(path: str) -> tuple[str, str]:
-    """Returns (content, sha) or raises."""
     try:
         f = repo.get_contents(path, ref=branch_name)
         content = base64.b64decode(f.content).decode("utf-8", errors="replace")
         return content, f.sha
     except GithubException:
-        return "", ""  # new file
+        return "", ""
 
 # ── Helper: commit file to branch ────────────────────────────────────────────
 def commit_file(path: str, content: str, sha: str, message: str):
@@ -66,14 +66,23 @@ def commit_file(path: str, content: str, sha: str, message: str):
     else:
         repo.create_file(path, message, content, branch=branch_name)
 
-# ── Build context note for the LLM ───────────────────────────────────────────
+# ── Build retry context for the LLM ──────────────────────────────────────────
 retry_context = ""
 if REVIEW_FEEDBACK:
-    retry_context = f"- IMPORTANT: A code review rejected the previous attempt. Fix these specific issues:\n  {REVIEW_FEEDBACK}"
+    retry_context = (
+        f"- IMPORTANT: A code review rejected the previous attempt. "
+        f"Fix these specific issues:\n  {REVIEW_FEEDBACK}"
+    )
+elif TEST_FAILURE and TEST_OUTPUT:
+    retry_context = (
+        f"- IMPORTANT: Tests failed. Fix the code to make them pass.\n"
+        f"  Test output (last 3000 chars):\n"
+        + "\n".join(f"  {line}" for line in TEST_OUTPUT[-3000:].splitlines())
+    )
 elif TEST_FAILURE:
     retry_context = "- IMPORTANT: Tests just failed. Fix the issue carefully."
 
-# ── System prompt for coding ─────────────────────────────────────────────────
+# ── System prompt ─────────────────────────────────────────────────────────────
 SYSTEM = f"""You are an expert {STACK} developer making precise, minimal code changes.
 
 Rules:
@@ -83,6 +92,8 @@ Rules:
 - If creating a new file, write clean, idiomatic code for the stack.
 - Do not add unnecessary comments.
 - Do not import modules, models, or functions that do not exist in the codebase.
+- When adding a new backend endpoint or function, also write or update the corresponding test in the tests directory.
+- When adding a new frontend component or store, write or update the corresponding test file.
 {retry_context}
 """
 
@@ -109,6 +120,7 @@ File: {file_path}
 Issue context: {plan.get('summary', '')}
 Notes: {plan.get('notes', '')}
 {f"Review feedback to address: {REVIEW_FEEDBACK}" if REVIEW_FEEDBACK else ""}
+{f"Test failure output to fix:{chr(10)}{TEST_OUTPUT[-2000:]}" if TEST_FAILURE and TEST_OUTPUT else ""}
 
 Return the complete new file content:"""
 
@@ -124,7 +136,6 @@ Return the complete new file content:"""
             )
             new_content = response.choices[0].message.content.strip()
 
-            # Strip accidental markdown fences if model adds them
             if new_content.startswith("```"):
                 lines = new_content.split("\n")
                 new_content = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
@@ -133,7 +144,6 @@ Return the complete new file content:"""
             print(f"  ERROR calling LiteLLM for {file_path}: {e}")
             continue
 
-        # Skip if nothing changed
         if new_content == existing_content:
             print(f"  No changes needed for {file_path}")
             continue
@@ -146,7 +156,7 @@ Return the complete new file content:"""
         except Exception as e:
             print(f"  ERROR committing {file_path}: {e}")
 
-# ── Summary comment on issue ──────────────────────────────────────────────────
+# ── Summary comment ───────────────────────────────────────────────────────────
 if committed_files:
     files_list = "\n".join(f"- `{f}`" for f in committed_files)
     retry_note = ""
