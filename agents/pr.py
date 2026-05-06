@@ -11,13 +11,14 @@ from openai import OpenAI
 from github import Github, GithubException
 
 # ── Config from environment ──────────────────────────────────────────────────
-LITELLM_URL    = os.environ["LITELLM_URL"]
-LITELLM_KEY    = os.environ["LITELLM_MASTER_KEY"]
-GITHUB_TOKEN   = os.environ["GITHUB_TOKEN"]
-REPO_FULL_NAME = os.environ["REPO_FULL_NAME"]
-ISSUE_NUMBER   = int(os.environ["ISSUE_NUMBER"])
-TASK_PLAN_RAW  = os.environ.get("TASK_PLAN", "")
-TESTS_PASSED   = os.environ.get("TESTS_PASSED", "false").lower() == "true"
+LITELLM_URL     = os.environ["LITELLM_URL"]
+LITELLM_KEY     = os.environ["LITELLM_MASTER_KEY"]
+GITHUB_TOKEN    = os.environ["GITHUB_TOKEN"]
+REPO_FULL_NAME  = os.environ["REPO_FULL_NAME"]
+ISSUE_NUMBER    = int(os.environ["ISSUE_NUMBER"])
+TASK_PLAN_RAW   = os.environ.get("TASK_PLAN", "")
+TESTS_PASSED    = os.environ.get("TESTS_PASSED", "false").lower() == "true"
+REVIEW_APPROVED = os.environ.get("REVIEW_APPROVED", "true").lower() == "true"
 
 # ── Clients ───────────────────────────────────────────────────────────────────
 llm   = OpenAI(base_url=f"{LITELLM_URL}/v1", api_key=LITELLM_KEY)
@@ -54,6 +55,9 @@ tasks_text = "\n".join(
     f"- [{t['type']}] {t['description']}" for t in plan.get("tasks", [])
 )
 
+test_status  = "✅ Tests passed" if TESTS_PASSED else "⚠️ Tests failed or were not run"
+review_status = "✅ Review approved" if REVIEW_APPROVED else "⚠️ Review flagged issues — please audit before merging"
+
 prompt = f"""Write a concise GitHub pull request description for these changes:
 
 Summary: {plan.get('summary', '')}
@@ -61,13 +65,14 @@ Tasks completed:
 {tasks_text}
 
 Notes: {plan.get('notes', '')}
-Tests passed: {TESTS_PASSED}
+Test status: {test_status}
+Review status: {review_status}
 Closes issue: #{ISSUE_NUMBER}
 
 Format as markdown with:
 - A short ## What changed section (2-3 sentences)
 - A ## Tasks section listing what was done
-- A ## Testing section noting test status
+- A ## Status section with test and review outcome
 - Closes #{ISSUE_NUMBER} at the end
 
 Keep it professional and concise."""
@@ -81,7 +86,6 @@ try:
     )
     pr_body = response.choices[0].message.content.strip()
 except Exception as e:
-    # Fallback to a simple body if LLM fails
     print(f"WARNING: LLM failed for PR description ({e}), using fallback.")
     pr_body = f"""## What changed
 
@@ -91,17 +95,20 @@ except Exception as e:
 
 {tasks_text}
 
-## Testing
+## Status
 
-{'✅ Tests passed.' if TESTS_PASSED else '⚠️ Tests were not run or failed — please review carefully.'}
+- {test_status}
+- {review_status}
 
 Closes #{ISSUE_NUMBER}"""
+
+# ── Determine if PR should be draft ──────────────────────────────────────────
+open_as_draft = not TESTS_PASSED or not REVIEW_APPROVED
 
 # ── Open the PR ───────────────────────────────────────────────────────────────
 pr_title = f"ai: {plan.get('summary', f'Fixes #{ISSUE_NUMBER}')[:72]}"
 
 try:
-    # Check if PR already exists for this branch
     existing_prs = repo.get_pulls(state="open", head=f"{repo.owner.login}:{branch_name}")
     if existing_prs.totalCount > 0:
         pr = existing_prs[0]
@@ -113,15 +120,16 @@ try:
             body=pr_body,
             head=branch_name,
             base=default_branch,
-            draft=not TESTS_PASSED,  # open as draft if tests didn't pass
+            draft=open_as_draft,
         )
         print(f"Opened PR #{pr.number}: {pr.html_url}")
 
-    # Link PR back to issue
+    status_line = f"{test_status} | {review_status}"
     issue.create_comment(
         f"🤖 **AI Agent — Complete**\n\n"
-        f"{'✅ Tests passed.' if TESTS_PASSED else '⚠️ Tests failed or were not run — opened as draft PR.'}\n\n"
+        f"{status_line}\n\n"
         f"Pull request: {pr.html_url}"
+        + ("\n\n⚠️ Opened as **draft** — review before merging." if open_as_draft else "")
     )
 
 except GithubException as e:
