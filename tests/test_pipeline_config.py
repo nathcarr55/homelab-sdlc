@@ -40,7 +40,8 @@ AGENT_FILES = ["plan.py", "code.py", "test_loop.py", "lifeline.py", "review.py",
 
 # Packages installed by the workflow step "Install agent dependencies"
 # 'github' is the importable module name for PyGithub
-INSTALLED_PACKAGES = {"openai", "github", "anthropic", "requests"}
+# anthropic is no longer listed — all Claude calls go through LiteLLM
+INSTALLED_PACKAGES = {"openai", "github", "requests"}
 
 # Env vars that GitHub Actions injects automatically — not required in step env sections
 GH_AUTO_VARS = {
@@ -351,26 +352,19 @@ class TestWorkflowStructure:
             f"Add them to the 'secrets:' block of the calling job."
         )
 
-    def test_ai_task_forwards_anthropic_key(self):
+    def test_no_agent_imports_anthropic_sdk(self):
         """
-        CRITICAL: lifeline.py uses os.environ['ANTHROPIC_API_KEY'] (hard required).
-        If the lifeline step triggers (all test loop attempts exhausted) and
-        ANTHROPIC_API_KEY is not forwarded, the agent crashes with a KeyError/auth error.
-
-        review.py handles the missing key gracefully (defaults to approved),
-        but lifeline.py does NOT — it requires the key unconditionally.
+        All Claude calls now route through LiteLLM. No agent should import the
+        anthropic SDK directly — that would mean it's bypassing LiteLLM and
+        requiring a separate API key.
         """
-        ai_task = load_workflow("ai-task.yml")
-        forwarded = set()
-        for job in ai_task["jobs"].values():
-            forwarded.update(job.get("secrets", {}).keys())
-
-        assert "ANTHROPIC_API_KEY" in forwarded, (
-            "ai-task.yml does not forward ANTHROPIC_API_KEY.\n"
-            "lifeline.py uses os.environ['ANTHROPIC_API_KEY'] and will crash if\n"
-            "the test loop exhausts all attempts and the lifeline step is triggered.\n"
-            "Add 'ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}' to the secrets block."
-        )
+        for agent in AGENT_FILES:
+            source = read_agent(agent)
+            assert "import anthropic" not in source, (
+                f"agents/{agent} still imports the anthropic SDK directly.\n"
+                f"All Claude calls should go through LiteLLM (OpenAI client with "
+                f"model='anthropic/...'). Remove the direct anthropic import."
+            )
 
     def test_plan_step_before_code_step(self):
         """Coding agent depends on task_plan output from planning agent."""
@@ -468,30 +462,29 @@ class TestSubprocessPaths:
 
 class TestAgentLogic:
 
-    def test_lifeline_hard_requires_anthropic_key(self):
-        """
-        lifeline.py must hard-require ANTHROPIC_API_KEY so we can detect the
-        misconfiguration (ai-task.yml not forwarding it) at test time, not
-        when a live test loop fails at 2am.
-        """
+    def test_lifeline_uses_litellm_not_anthropic_sdk(self):
+        """lifeline.py must use the OpenAI client (LiteLLM) not the Anthropic SDK."""
         tree = parse_agent("lifeline.py")
         required, optional = extract_env_reads(tree)
-        assert "ANTHROPIC_API_KEY" in required, (
-            "lifeline.py should use os.environ['ANTHROPIC_API_KEY'] (hard required). "
-            "This makes the test_ai_task_forwards_anthropic_key test catch the misconfiguration."
+        assert "LITELLM_URL" in required, (
+            "lifeline.py must use os.environ['LITELLM_URL'] — it should call Claude "
+            "through LiteLLM (OpenAI client), not the Anthropic SDK directly."
+        )
+        assert "ANTHROPIC_API_KEY" not in required and "ANTHROPIC_API_KEY" not in optional, (
+            "lifeline.py still references ANTHROPIC_API_KEY. "
+            "Remove it — Claude is now routed through LiteLLM."
         )
 
-    def test_review_soft_requires_anthropic_key(self):
-        """
-        review.py must gracefully handle a missing key (default to approved).
-        It should use os.environ.get() and check for empty string before calling the API.
-        """
+    def test_review_uses_litellm_not_anthropic_sdk(self):
+        """review.py must use the OpenAI client (LiteLLM) not the Anthropic SDK."""
         tree = parse_agent("review.py")
-        required, _ = extract_env_reads(tree)
-        assert "ANTHROPIC_API_KEY" not in required, (
-            "review.py uses os.environ['ANTHROPIC_API_KEY'] as hard required. "
-            "Change to os.environ.get() with graceful fallback so the review step "
-            "doesn't crash when the key is absent."
+        required, optional = extract_env_reads(tree)
+        assert "LITELLM_URL" in required, (
+            "review.py must use os.environ['LITELLM_URL'] — Claude calls go through LiteLLM."
+        )
+        assert "ANTHROPIC_API_KEY" not in required and "ANTHROPIC_API_KEY" not in optional, (
+            "review.py still references ANTHROPIC_API_KEY. "
+            "Remove it — Claude is now routed through LiteLLM."
         )
 
     def test_test_loop_exits_nonzero_on_exhaustion(self):
@@ -531,14 +524,19 @@ class TestAgentLogic:
             "plan.py should validate the plan schema and exit if required keys are missing."
         )
 
-    def test_plan_falls_back_to_claude_on_litellm_failure(self):
+    def test_plan_exits_cleanly_on_litellm_failure(self):
         """
-        plan.py must have a Claude fallback for when LiteLLM is unreachable.
-        Without it, any LiteLLM outage kills the entire pipeline at the first step.
+        plan.py no longer has a fallback — if LiteLLM is unreachable it must
+        exit(1) immediately so the pipeline fails fast rather than hanging.
         """
         source = read_agent("plan.py")
-        assert "ANTHROPIC_API_KEY" in source and "anthropic" in source.lower(), (
-            "plan.py should fall back to Claude (Anthropic) when LiteLLM fails."
+        assert "sys.exit(1)" in source, (
+            "plan.py must call sys.exit(1) on LiteLLM failure so the pipeline "
+            "fails fast with a clear error instead of producing an empty plan."
+        )
+        assert "import anthropic" not in source, (
+            "plan.py still imports the anthropic SDK. "
+            "The Anthropic fallback was removed — all calls go through LiteLLM."
         )
 
 

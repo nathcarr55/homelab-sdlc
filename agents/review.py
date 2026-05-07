@@ -26,15 +26,12 @@ client = OpenAI(base_url=f"{LITELLM_URL}/v1", api_key=LITELLM_KEY)
 
 
 def write_outputs(approved: bool, feedback: str):
-    feedback_escaped = feedback.replace("
-", " ").replace("", "")
+    feedback_escaped = feedback.replace("\n", " ").replace("\r", "")
     github_output = os.environ.get("GITHUB_OUTPUT", "")
     if github_output:
         with open(github_output, "a") as f:
-            f.write(f"approved={'true' if approved else 'false'}
-")
-            f.write(f"feedback={feedback_escaped}
-")
+            f.write(f"approved={'true' if approved else 'false'}\n")
+            f.write(f"feedback={feedback_escaped}\n")
     print(f"approved={'true' if approved else 'false'}")
     print(f"feedback={feedback_escaped}")
 
@@ -65,18 +62,11 @@ diff_sections = []
 for f in comparison.files:
     patch = getattr(f, "patch", None)
     if patch:
-        diff_sections.append(f"### {f.filename}
-```diff
-{patch}
-```")
+        diff_sections.append(f"### {f.filename}\n```diff\n{patch}\n```")
 
-diff_text = "
-
-".join(diff_sections) if diff_sections else "No patch available."
+diff_text = "\n\n".join(diff_sections) if diff_sections else "No patch available."
 if len(diff_text) > 40000:
-    diff_text = diff_text[:40000] + "
-
-... (diff truncated for length)"
+    diff_text = diff_text[:40000] + "\n\n... (diff truncated for length)"
 
 prompt = f"""You are a senior code reviewer auditing AI-generated code for a {STACK} project.
 
@@ -125,10 +115,8 @@ try:
     )
     raw = response.choices[0].message.content.strip()
     if raw.startswith("```"):
-        lines = raw.split("
-")
-        raw = "
-".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        lines = raw.split("\n")
+        raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
     result = json.loads(raw)
 except json.JSONDecodeError as e:
     print(f"WARNING: Could not parse response as JSON ({e}) — defaulting to approved.")
@@ -139,30 +127,21 @@ approved = bool(result.get("approved", True))
 summary  = result.get("summary", "")
 issues   = result.get("issues", [])
 
-print(f"
-{'✅ APPROVED' if approved else '❌ REJECTED'}: {summary}")
+print(f"\n{'✅ APPROVED' if approved else '❌ REJECTED'}: {summary}")
 if issues:
-    print("
-Issues found:")
+    print("\nIssues found:")
     for item in issues:
         print(f"  - {item}")
 
-issues_md = "
-".join(f"- {i}" for i in issues) if issues else ""
+issues_md = "\n".join(f"- {i}" for i in issues) if issues else ""
 comment = (
     f"🔍 **Review Agent — {'✅ Approved' if approved else '❌ Rejected'}"
-    f" (attempt {REVIEW_ATTEMPT})**
-
-"
-    f"**Verdict:** {summary}
-
-"
-    + (f"**Issues to fix:**
-{issues_md}" if issues_md else "No issues found — code looks good.")
+    f" (attempt {REVIEW_ATTEMPT})**\n\n"
+    f"**Verdict:** {summary}\n\n"
+    + (f"**Issues to fix:**\n{issues_md}" if issues_md else "No issues found — code looks good.")
 )
 issue.create_comment(comment)
 
 write_outputs(approved, "; ".join(issues))
-print("
-Review agent complete.")
+print("\nReview agent complete.")
 sys.exit(0)

@@ -29,8 +29,7 @@ def get_file_tree(max_files: int = 60) -> str:
     try:
         contents = repo.get_git_tree("HEAD", recursive=True)
         files = [f.path for f in contents.tree if f.type == "blob"][:max_files]
-        return "
-".join(files)
+        return "\n".join(files)
     except Exception as e:
         return f"(could not fetch file tree: {e})"
 
@@ -72,10 +71,8 @@ Repository file tree:
 def parse_json_response(raw: str) -> dict:
     text = raw.strip()
     if text.startswith("```"):
-        lines = text.split("
-")
-        text = "
-".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
     return json.loads(text.strip())
 
 
@@ -95,8 +92,7 @@ try:
     plan = parse_json_response(raw)
     print("Planning complete.")
 except json.JSONDecodeError:
-    print(f"ERROR: LiteLLM returned non-JSON.
-Raw response (first 300 chars): {raw[:300]}")
+    print(f"ERROR: LiteLLM returned non-JSON.\nRaw response (first 300 chars): {raw[:300]}")
     sys.exit(1)
 except Exception as e:
     print(f"ERROR: LiteLLM call failed: {e}")
@@ -128,16 +124,12 @@ for t in plan["tasks"]:
 if plan.get("notes"):
     comment_lines += ["", f"**Notes:** {plan['notes']}"]
 
-issue.create_comment("
-".join(comment_lines))
+issue.create_comment("\n".join(comment_lines))
 
 plan_json = json.dumps(plan)
 with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-    f.write("task_plan<<EOF
-")
-    f.write(plan_json + "
-")
-    f.write("EOF
-")
+    f.write("task_plan<<EOF\n")
+    f.write(plan_json + "\n")
+    f.write("EOF\n")
 
 print("Planning complete.")

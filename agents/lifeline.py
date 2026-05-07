@@ -55,35 +55,23 @@ try:
     for f in comparison.files:
         patch = getattr(f, "patch", None)
         if patch:
-            diff_sections.append(f"### {f.filename}
-```diff
-{patch}
-```")
+            diff_sections.append(f"### {f.filename}\n```diff\n{patch}\n```")
         try:
             obj = repo.get_contents(f.filename, ref=branch_name)
             content = base64.b64decode(obj.content).decode("utf-8", errors="replace")
             changed_files.append({"path": f.filename, "content": content, "sha": obj.sha})
         except GithubException:
             pass
-    diff_text = "
-
-".join(diff_sections) or "No patches available."
+    diff_text = "\n\n".join(diff_sections) or "No patches available."
     if len(diff_text) > 25000:
-        diff_text = diff_text[:25000] + "
-
-... (diff truncated)"
+        diff_text = diff_text[:25000] + "\n\n... (diff truncated)"
 except GithubException as e:
     print(f"WARNING: Could not fetch diff: {e}")
 
 files_section = ""
 for f in changed_files:
     snippet = f["content"][:4000]
-    files_section += f"
-### {f['path']}
-```
-{snippet}
-```
-"
+    files_section += f"\n### {f['path']}\n```\n{snippet}\n```\n"
 
 sha_lookup = {f["path"]: f["sha"] for f in changed_files}
 
@@ -127,17 +115,13 @@ try:
     )
     raw = response.choices[0].message.content.strip()
     if raw.startswith("```"):
-        lines = raw.split("
-")
-        raw = "
-".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        lines = raw.split("\n")
+        raw = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
     result_data = json.loads(raw)
 except json.JSONDecodeError as e:
     print(f"ERROR: Could not parse response as JSON: {e}")
     issue.create_comment(
-        "🆘 **Lifeline Agent** — Could not parse Claude's response. Manual intervention needed.
-
-"
+        "🆘 **Lifeline Agent** — Could not parse Claude's response. Manual intervention needed.\n\n"
         f"Parse error: {e}"
     )
     sys.exit(1)
@@ -148,8 +132,7 @@ except Exception as e:
 diagnosis = result_data.get("diagnosis", "")
 fixes     = result_data.get("fixes", [])
 
-print(f"
-Diagnosis: {diagnosis}")
+print(f"\nDiagnosis: {diagnosis}")
 print(f"Fixes to apply: {len(fixes)} file(s)")
 
 committed = []
@@ -181,29 +164,18 @@ for fix in fixes:
         print(f"  ERROR committing {path}: {e}")
 
 if committed:
-    files_md = "
-".join(f"- `{f}`" for f in committed)
+    files_md = "\n".join(f"- `{f}`" for f in committed)
     issue.create_comment(
-        f"🆘 **Lifeline Agent (Claude Sonnet)**
-
-"
-        f"**Diagnosis:** {diagnosis}
-
-"
-        f"**Fixed files:**
-{files_md}"
+        f"🆘 **Lifeline Agent (Claude via LiteLLM)**\n\n"
+        f"**Diagnosis:** {diagnosis}\n\n"
+        f"**Fixed files:**\n{files_md}"
     )
 else:
     issue.create_comment(
-        f"🆘 **Lifeline Agent (Claude Sonnet)**
-
-"
-        f"**Diagnosis:** {diagnosis}
-
-"
+        f"🆘 **Lifeline Agent (Claude via LiteLLM)**\n\n"
+        f"**Diagnosis:** {diagnosis}\n\n"
         f"No file changes committed — the fix may require manual review."
     )
 
-print(f"
-Lifeline complete. {len(committed)} file(s) committed.")
+print(f"\nLifeline complete. {len(committed)} file(s) committed.")
 sys.exit(0)

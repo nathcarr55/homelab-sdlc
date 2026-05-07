@@ -15,4 +15,3 @@ jobs:
       TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
       LITELLM_URL: ${{ secrets.LITELLM_URL }}
       LITELLM_MASTER_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
