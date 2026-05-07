@@ -2,7 +2,6 @@
 """
 Planning agent — reads a GitHub issue and produces a structured task plan.
 Outputs task_plan as a GitHub Actions step output for downstream agents.
-Falls back to Claude (Anthropic) if LiteLLM returns non-JSON.
 """
 
 import os
@@ -11,35 +10,33 @@ import sys
 from openai import OpenAI
 from github import Github
 
-# ── Config from environment ──────────────────────────────────────────────────
-LITELLM_URL      = os.environ["LITELLM_URL"]
-LITELLM_KEY      = os.environ["LITELLM_MASTER_KEY"]
-GITHUB_TOKEN     = os.environ["GITHUB_TOKEN"]
-REPO_FULL_NAME   = os.environ["REPO_FULL_NAME"]
-ISSUE_NUMBER     = int(os.environ["ISSUE_NUMBER"])
-ISSUE_TITLE      = os.environ.get("ISSUE_TITLE", "")
-ISSUE_BODY       = os.environ.get("ISSUE_BODY", "")
-STACK            = os.environ.get("STACK", "unknown")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+LITELLM_URL    = os.environ["LITELLM_URL"]
+LITELLM_KEY    = os.environ["LITELLM_MASTER_KEY"]
+GITHUB_TOKEN   = os.environ["GITHUB_TOKEN"]
+REPO_FULL_NAME = os.environ["REPO_FULL_NAME"]
+ISSUE_NUMBER   = int(os.environ["ISSUE_NUMBER"])
+ISSUE_TITLE    = os.environ.get("ISSUE_TITLE", "")
+ISSUE_BODY     = os.environ.get("ISSUE_BODY", "")
+STACK          = os.environ.get("STACK", "unknown")
 
-# ── Clients ───────────────────────────────────────────────────────────────────
-llm = OpenAI(base_url=f"{LITELLM_URL}/v1", api_key=LITELLM_KEY)
-gh  = Github(GITHUB_TOKEN)
-repo = gh.get_repo(REPO_FULL_NAME)
+llm   = OpenAI(base_url=f"{LITELLM_URL}/v1", api_key=LITELLM_KEY)
+gh    = Github(GITHUB_TOKEN)
+repo  = gh.get_repo(REPO_FULL_NAME)
 issue = repo.get_issue(ISSUE_NUMBER)
 
-# ── Get repo file tree for context ────────────────────────────────────────────
+
 def get_file_tree(max_files: int = 60) -> str:
     try:
         contents = repo.get_git_tree("HEAD", recursive=True)
         files = [f.path for f in contents.tree if f.type == "blob"][:max_files]
-        return "\n".join(files)
+        return "
+".join(files)
     except Exception as e:
         return f"(could not fetch file tree: {e})"
 
+
 file_tree = get_file_tree()
 
-# ── Build the planning prompt ─────────────────────────────────────────────────
 system_prompt = f"""You are a senior software engineer planning work on a {STACK} codebase.
 Given a GitHub issue, produce a precise, actionable task plan.
 
@@ -71,21 +68,19 @@ Repository file tree:
 {file_tree}
 """
 
-# ── Helper: strip markdown fences and parse JSON ──────────────────────────────
+
 def parse_json_response(raw: str) -> dict:
     text = raw.strip()
     if text.startswith("```"):
-        lines = text.split("\n")
-        text = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        lines = text.split("
+")
+        text = "
+".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
     return json.loads(text.strip())
 
-# ── Try LiteLLM first, fall back to Claude ────────────────────────────────────
+
 print(f"Planning issue #{ISSUE_NUMBER}: {ISSUE_TITLE}")
 
-plan = None
-raw = ""
-
-# Attempt 1: LiteLLM smart model
 try:
     response = llm.chat.completions.create(
         model="smart",
@@ -98,37 +93,15 @@ try:
     )
     raw = response.choices[0].message.content.strip()
     plan = parse_json_response(raw)
-    print("Planned via LiteLLM smart model.")
+    print("Planning complete.")
 except json.JSONDecodeError:
-    print(f"WARNING: LiteLLM returned non-JSON — falling back to Claude.\nRaw response (first 300 chars): {raw[:300]}")
+    print(f"ERROR: LiteLLM returned non-JSON.
+Raw response (first 300 chars): {raw[:300]}")
+    sys.exit(1)
 except Exception as e:
-    print(f"WARNING: LiteLLM call failed ({e}) — falling back to Claude.")
+    print(f"ERROR: LiteLLM call failed: {e}")
+    sys.exit(1)
 
-# Attempt 2: Claude via Anthropic API
-if plan is None:
-    if not ANTHROPIC_API_KEY:
-        print("ERROR: LiteLLM failed and ANTHROPIC_API_KEY is not set — cannot fall back.")
-        sys.exit(1)
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1000,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-        raw = msg.content[0].text.strip()
-        plan = parse_json_response(raw)
-        print("Planned via Claude fallback.")
-    except json.JSONDecodeError:
-        print(f"ERROR: Claude also returned non-JSON:\n{raw[:500]}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"ERROR: Claude fallback failed: {e}")
-        sys.exit(1)
-
-# ── Validate ──────────────────────────────────────────────────────────────────
 required_keys = {"summary", "branch_name", "tasks"}
 if not required_keys.issubset(plan.keys()):
     print(f"ERROR: plan missing keys. Got: {list(plan.keys())}")
@@ -140,7 +113,6 @@ print(f"Tasks: {len(plan['tasks'])}")
 for t in plan["tasks"]:
     print(f"  [{t['type']}] {t['description']}")
 
-# ── Post plan as issue comment ────────────────────────────────────────────────
 comment_lines = [
     "🤖 **AI Agent — Task Plan**",
     "",
@@ -156,13 +128,16 @@ for t in plan["tasks"]:
 if plan.get("notes"):
     comment_lines += ["", f"**Notes:** {plan['notes']}"]
 
-issue.create_comment("\n".join(comment_lines))
+issue.create_comment("
+".join(comment_lines))
 
-# ── Write output for next step ────────────────────────────────────────────────
 plan_json = json.dumps(plan)
 with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-    f.write("task_plan<<EOF\n")
-    f.write(plan_json + "\n")
-    f.write("EOF\n")
+    f.write("task_plan<<EOF
+")
+    f.write(plan_json + "
+")
+    f.write("EOF
+")
 
 print("Planning complete.")
