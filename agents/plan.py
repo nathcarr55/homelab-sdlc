@@ -80,13 +80,13 @@ print(f"Planning issue #{ISSUE_NUMBER}: {ISSUE_TITLE}")
 
 try:
     response = llm.chat.completions.create(
-        model="smart",
+        model="anthropic/claude-sonnet-4-6",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt},
         ],
         temperature=0.2,
-        max_tokens=1000,
+        max_tokens=4000,
     )
     raw = response.choices[0].message.content.strip()
     plan = parse_json_response(raw)
