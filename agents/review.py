@@ -59,7 +59,9 @@ except GithubException as e:
     sys.exit(0)
 
 diff_sections = []
+changed_filenames = set()
 for f in comparison.files:
+    changed_filenames.add(f.filename)
     patch = getattr(f, "patch", None)
     if patch:
         diff_sections.append(f"### {f.filename}\n```diff\n{patch}\n```")
@@ -67,6 +69,36 @@ for f in comparison.files:
 diff_text = "\n\n".join(diff_sections) if diff_sections else "No patch available."
 if len(diff_text) > 40000:
     diff_text = diff_text[:40000] + "\n\n... (diff truncated for length)"
+
+# ── Fetch anchor files to validate imports and patterns against ───────────────
+import base64
+
+ANCHOR_CANDIDATES = [
+    "backend/app/api/deps.py",
+    "backend/app/models.py",
+    "backend/app/api/main.py",
+]
+
+def fetch_file_content(path: str) -> str:
+    try:
+        obj = repo.get_contents(path, ref=default_branch)
+        return base64.b64decode(obj.content).decode("utf-8", errors="replace")
+    except GithubException:
+        return ""
+
+anchor_sections = []
+for anchor_path in ANCHOR_CANDIDATES:
+    if anchor_path not in changed_filenames:
+        content = fetch_file_content(anchor_path)
+        if content:
+            anchor_sections.append(f"### {anchor_path}\n```\n{content[:3000]}\n```")
+
+anchor_context = ""
+if anchor_sections:
+    anchor_context = (
+        "\n## Key Codebase Files (use these to validate imports and patterns)\n\n"
+        + "\n\n".join(anchor_sections)
+    )
 
 prompt = f"""You are a senior code reviewer auditing AI-generated code for a {STACK} project.
 
@@ -80,15 +112,18 @@ prompt = f"""You are a senior code reviewer auditing AI-generated code for a {ST
 ## Code Changes (git diff)
 
 {diff_text}
+{anchor_context}
 
 ## Your Task
 
 Review the code changes strictly against the original issue specification. Focus on:
 
 1. **Completeness** — Are all files the spec requires actually changed?
-2. **Phantom imports** — Are there imports of models, modules, or functions that don't exist in the codebase and weren't created in this diff?
-3. **Correctness** — Does the implementation match the spec? Wrong function names, wrong API endpoints, wrong property names?
-4. **Obvious bugs** — Things that will clearly cause a runtime error.
+2. **Phantom imports** — Cross-reference imports against the key codebase files above. Flag anything imported that does not exist (e.g. importing `get_db` when only `SessionDep` exists in deps.py, or importing from `app.schemas` when there is no schemas.py).
+3. **Pattern mismatches** — Does the new code follow the same patterns as the existing codebase? (e.g. using SQLAlchemy ORM style when the project uses SQLModel select(), using Integer PKs when the project uses UUIDs)
+4. **API URL consistency** — Do frontend API calls use the correct URL paths that match the backend router prefixes?
+5. **Test file validity** — Do files in test directories actually contain test code (pytest functions or vitest describe/it blocks), not component or route code?
+6. **Obvious bugs** — Things that will clearly cause a runtime error.
 
 Do NOT reject for style preferences, minor naming differences, or things the spec didn't mention.
 Only reject if the implementation will fail to work or clearly misses a required piece of the spec.

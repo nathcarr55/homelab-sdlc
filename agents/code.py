@@ -97,15 +97,36 @@ Rules:
 {retry_context}
 """
 
+# ── Helper: build reference file context for a task ──────────────────────────
+def build_reference_context(reference_paths: list[str]) -> str:
+    if not reference_paths:
+        return ""
+    sections = []
+    for path in reference_paths:
+        content, _ = fetch_file(path)
+        if content:
+            sections.append(f"=== REFERENCE: {path} ===\n{content}\n=== END REFERENCE ===")
+    if not sections:
+        return ""
+    return (
+        "\n\nPATTERN FILES — study these existing files and match their style, "
+        "imports, and conventions exactly:\n\n"
+        + "\n\n".join(sections)
+    )
+
+
 # ── Process each task ─────────────────────────────────────────────────────────
 committed_files = []
 
 for task in tasks:
-    desc  = task["description"]
-    files = task.get("files_to_change", [])
-    ttype = task.get("type", "change")
+    desc       = task["description"]
+    files      = task.get("files_to_change", [])
+    ttype      = task.get("type", "change")
+    ref_files  = task.get("reference_files", [])
 
     print(f"\nTask [{ttype}]: {desc}")
+
+    reference_context = build_reference_context(ref_files)
 
     for file_path in files:
         print(f"  Processing: {file_path}")
@@ -121,6 +142,7 @@ Issue context: {plan.get('summary', '')}
 Notes: {plan.get('notes', '')}
 {f"Review feedback to address: {REVIEW_FEEDBACK}" if REVIEW_FEEDBACK else ""}
 {f"Test failure output to fix:{chr(10)}{TEST_OUTPUT[-2000:]}" if TEST_FAILURE and TEST_OUTPUT else ""}
+{reference_context}
 
 Return the complete new file content:"""
 
@@ -132,7 +154,7 @@ Return the complete new file content:"""
                     {"role": "user",   "content": user_prompt},
                 ],
                 temperature=0.1,
-                max_tokens=4000,
+                max_tokens=8000,
             )
             new_content = response.choices[0].message.content.strip()
 

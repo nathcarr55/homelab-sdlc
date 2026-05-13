@@ -48,6 +48,7 @@ Respond ONLY with a JSON object — no preamble, no markdown fences. Schema:
       "id": 1,
       "description": "what to do",
       "files_to_change": ["path/to/file.py"],
+      "reference_files": ["path/to/existing/similar_file.py"],
       "type": "feature|bugfix|refactor|test|docs"
     }}
   ],
@@ -57,6 +58,14 @@ Respond ONLY with a JSON object — no preamble, no markdown fences. Schema:
 Keep tasks small and discrete. Max 10 tasks. files_to_change should be real paths from the file tree.
 Make sure you are incorporating both frontend changes that need to be made and backend changes in your tasks.
 For every feature or bugfix task that adds or modifies a function, endpoint, or component, include the corresponding test file in files_to_change (e.g. backend/tests/test_orders.py or frontend/src/stores/__tests__/cart.test.ts). Tests are first-class — always include them alongside the implementation file.
+
+reference_files is critical — for every task, list 1-3 existing files the coding agent should read to understand the exact patterns, imports, and conventions to follow. Examples:
+- When creating a new backend route file, reference an existing route file (e.g. backend/app/api/routes/orders.py) AND backend/app/api/deps.py AND backend/app/models.py
+- When creating a new alembic migration, reference the most recent existing migration file
+- When creating a new frontend view, reference an existing similar view
+- When creating a new frontend store, reference an existing store (e.g. frontend/src/stores/cart.ts)
+- When creating a new test file, reference an existing test file in the same directory
+The coding agent will read these files verbatim before writing code, so choose files that demonstrate the exact style and patterns to follow.
 """
 
 user_prompt = f"""Issue #{ISSUE_NUMBER}: {ISSUE_TITLE}
