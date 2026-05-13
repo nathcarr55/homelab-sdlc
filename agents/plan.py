@@ -61,10 +61,11 @@ For every feature or bugfix task that adds or modifies a function, endpoint, or 
 
 reference_files is critical — for every task, list 1-3 existing files the coding agent should read to understand the exact patterns, imports, and conventions to follow. Examples:
 - When creating a new backend route file, reference an existing route file (e.g. backend/app/api/routes/orders.py) AND backend/app/api/deps.py AND backend/app/models.py
-- When creating a new alembic migration, reference the most recent existing migration file
+- When creating or modifying the router registration file (e.g. backend/app/api/main.py), ALWAYS reference the current router registration file itself so the coder sees the existing include_router() calls and does not add duplicate prefix= arguments — each router already defines its own prefix internally
+- When creating a new alembic migration, ALWAYS reference the most recent existing migration file so the coder can see the exact revision ID chain and generate a new unique revision ID with the correct down_revision
 - When creating a new frontend view, reference an existing similar view
 - When creating a new frontend store, reference an existing store (e.g. frontend/src/stores/cart.ts)
-- When creating a new test file, reference an existing test file in the same directory
+- When creating a new test file, reference an existing test file in the same directory so the coder uses the correct fixture names, import paths, and assertion patterns
 The coding agent will read these files verbatim before writing code, so choose files that demonstrate the exact style and patterns to follow.
 """
 
