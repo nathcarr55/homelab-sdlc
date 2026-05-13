@@ -70,14 +70,8 @@ diff_text = "\n\n".join(diff_sections) if diff_sections else "No patch available
 if len(diff_text) > 40000:
     diff_text = diff_text[:40000] + "\n\n... (diff truncated for length)"
 
-# ── Fetch anchor files to validate imports and patterns against ───────────────
+# ── Fetch reference files the planner chose (generic — no hardcoded paths) ────
 import base64
-
-ANCHOR_CANDIDATES = [
-    "backend/app/api/deps.py",
-    "backend/app/models.py",
-    "backend/app/api/main.py",
-]
 
 def fetch_file_content(path: str) -> str:
     try:
@@ -86,12 +80,17 @@ def fetch_file_content(path: str) -> str:
     except GithubException:
         return ""
 
+reference_paths = []
+for task in plan.get("tasks", []):
+    for p in task.get("reference_files", []):
+        if p not in reference_paths and p not in changed_filenames:
+            reference_paths.append(p)
+
 anchor_sections = []
-for anchor_path in ANCHOR_CANDIDATES:
-    if anchor_path not in changed_filenames:
-        content = fetch_file_content(anchor_path)
-        if content:
-            anchor_sections.append(f"### {anchor_path}\n```\n{content[:3000]}\n```")
+for ref_path in reference_paths:
+    content = fetch_file_content(ref_path)
+    if content:
+        anchor_sections.append(f"### {ref_path}\n```\n{content[:3000]}\n```")
 
 anchor_context = ""
 if anchor_sections:
